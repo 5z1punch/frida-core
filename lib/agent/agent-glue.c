@@ -13,6 +13,61 @@
 # include <glib-openssl-static.h>
 #endif
 
+#define MAX_LINE 512
+#include <stdio.h>
+#include <string.h>
+#include <gum/guminterceptor.h>
+
+int if_system_server (void)
+{
+  FILE *fp; 
+  char strLine[MAX_LINE];
+  char *s = "system_server";
+  fp = fopen("/proc/self/cmdline", "r");
+  fgets(strLine, MAX_LINE, fp);
+  char *pos = strstr(strLine, s);
+  fclose(fp);
+  if(pos != NULL){
+    return 1;
+  }
+  else{
+    return 0;
+  }  
+}
+
+void gum_agent_so_init (void)
+{
+      FILE *fp; 
+      char strLine[MAX_LINE];
+      char *s = "frida-agent-";
+      fp = fopen("/proc/self/maps", "r");
+      while (!feof(fp))
+      { 
+          fgets(strLine, MAX_LINE, fp);
+          char *pos = strstr(strLine, s);
+          if(pos != NULL){
+            pos = strchr(strLine, ' ');
+            if(*(pos+3) == 'x'){
+              char so_start_hex[16];
+              int addr_len = ((pos - strLine) - 1) / 2;
+              so_start_hex[0] = '0';
+              so_start_hex[1] = 'x';
+              char so_end_hex[16];
+              so_end_hex[0] = '0';
+              so_end_hex[1] = 'x';
+              strncpy(so_start_hex+2, strLine, addr_len);
+              so_start_hex[addr_len+2] = '\0';
+              strncpy(so_end_hex+2, strLine+addr_len+1, addr_len);
+              so_end_hex[addr_len+2] = '\0';
+              sscanf(so_start_hex, "%p", &agent_so_begin);
+              sscanf(so_end_hex, "%p", &agent_so_end);
+              break;
+            }
+          }
+      } 
+      fclose(fp);
+}
+
 void
 _frida_agent_environment_init (void)
 {
@@ -38,6 +93,10 @@ _frida_agent_environment_init (void)
    */
   bsd_signal (G_MAXINT32, SIG_DFL);
 #endif
+  if(if_system_server() != 1){
+    gum_agent_so_init();
+    agent_so_init_flag = 1;
+  }
 }
 
 void
